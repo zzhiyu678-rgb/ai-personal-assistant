@@ -54,6 +54,7 @@ const AssistantPage = () => {
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   // 处于 debounce 等待期的对话ID（用户连续发送消息，等待合并）
   const [waitingDebounceConvId, setWaitingDebounceConvId] = useState<string | null>(null);
+  const [failedMessageIds, setFailedMessageIds] = useState<Set<string>>(new Set());
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -446,27 +447,42 @@ const AssistantPage = () => {
     }));
     setStreamingContent((prev) => ({ ...prev, [assistantTempId]: '' }));
 
+    // 用局部变量追踪已生成内容，避免React state闭包过时
+    let generatedContent = '';
+    let streamError = false;
+
     try {
       await generateReplyStream(convId, (fullText: string) => {
+        generatedContent = fullText;
         setStreamingContent((prev) => ({ ...prev, [assistantTempId]: fullText }));
       });
 
-      // 生成完成，清理临时消息
-      setPendingMessages((prev) => {
-        const list = (prev[convId] || []).filter((m) => m.id !== assistantTempId && !m.id.startsWith('temp-user-'));
-        return { ...prev, [convId]: list };
-      });
-      setStreamingContent((prev) => {
-        const next = { ...prev };
-        delete next[assistantTempId];
-        return next;
-      });
+      // 判断是否后端返回了纯错误信息（没有实际AI内容）
+      const trimmed = generatedContent.trim();
+      const isErrorOnly = trimmed.startsWith('⚠️') || trimmed === '[生成失败，请重试]' || trimmed.length === 0;
 
-      // 如果当前正在查看这个对话，刷新消息列表
-      if (currentIdRef.current === convId) {
-        getMessages(convId)
-          .then((data) => setMessages(data.items))
-          .catch(() => {});
+      if (isErrorOnly) {
+        // 没有实际内容，保留错误提示消息，标记为可重新生成
+        streamError = true;
+        setFailedMessageIds((prev) => new Set(prev).add(assistantTempId));
+      } else {
+        // 有实际内容，清理临时消息，从数据库刷新（后端已保存）
+        setPendingMessages((prev) => {
+          const list = (prev[convId] || []).filter((m) => m.id !== assistantTempId && !m.id.startsWith('temp-user-'));
+          return { ...prev, [convId]: list };
+        });
+        setStreamingContent((prev) => {
+          const next = { ...prev };
+          delete next[assistantTempId];
+          return next;
+        });
+
+        // 如果当前正在查看这个对话，刷新消息列表
+        if (currentIdRef.current === convId) {
+          getMessages(convId)
+            .then((data) => setMessages(data.items))
+            .catch(() => {});
+        }
       }
 
       // 延迟刷新对话列表（等待标题生成）
@@ -475,22 +491,31 @@ const AssistantPage = () => {
       }, 2000);
     } catch (error) {
       logger.error('生成回复失败', error);
-      setStreamingContent((prev) => ({
-        ...prev,
-        [assistantTempId]: prev[assistantTempId] || '[生成失败，请重试]',
-      }));
-      // 3秒后移除错误的临时消息
-      setTimeout(() => {
-        setPendingMessages((prev) => {
-          const list = (prev[convId] || []).filter((m) => m.id !== assistantTempId);
-          return { ...prev, [convId]: list };
-        });
-        setStreamingContent((prev) => {
-          const next = { ...prev };
-          delete next[assistantTempId];
-          return next;
-        });
-      }, 3000);
+      streamError = true;
+
+      if (generatedContent.trim() && !generatedContent.trim().startsWith('⚠️')) {
+        // 已有部分内容：保留内容，末尾追加中断提示
+        const partialWithNote = `${generatedContent}\n\n⚠️ AI回复中断，已保留已生成内容。`;
+        setStreamingContent((prev) => ({
+          ...prev,
+          [assistantTempId]: partialWithNote,
+        }));
+        // 从数据库刷新（后端已保存部分内容）
+        if (currentIdRef.current === convId) {
+          setTimeout(() => {
+            getMessages(convId)
+              .then((data) => setMessages(data.items))
+              .catch(() => {});
+          }, 500);
+        }
+      } else {
+        // 完全没有内容
+        setStreamingContent((prev) => ({
+          ...prev,
+          [assistantTempId]: '⚠️ AI暂时无法回复，请重试。',
+        }));
+      }
+      setFailedMessageIds((prev) => new Set(prev).add(assistantTempId));
     } finally {
       isGeneratingRef.current = false;
 
@@ -503,6 +528,24 @@ const AssistantPage = () => {
         }, DEBOUNCE_MS);
       }
     }
+  };
+
+  /**
+   * 重新生成上一条失败的AI回复
+   */
+  const handleRegenerate = (convId: string) => {
+    // 移除失败的临时消息
+    setPendingMessages((prev) => {
+      const list = (prev[convId] || []).filter((m) => !failedMessageIds.has(m.id));
+      return { ...prev, [convId]: list };
+    });
+    setFailedMessageIds((prev) => {
+      const next = new Set(prev);
+      (prev as Set<string>).forEach((id) => next.delete(id));
+      return next;
+    });
+    // 直接触发generate（用户消息仍然pending）
+    void flushPendingMessages(convId);
   };
 
   // 组件卸载时清理定时器
@@ -775,6 +818,14 @@ const AssistantPage = () => {
                             <span className="inline-block w-2 h-5 bg-primary ml-1 align-middle animate-pulse rounded-sm" />
                           )}
                       </p>
+                      {failedMessageIds.has(msg.id) && (
+                        <button
+                          onClick={() => handleRegenerate(currentId!)}
+                          className="mt-3 text-xs text-primary hover:text-primary/80 underline"
+                        >
+                          重新生成
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

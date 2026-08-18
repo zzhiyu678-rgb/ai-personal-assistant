@@ -349,12 +349,14 @@ export class AiConversationController {
       this.logger.log(`[AI Coach Generate] pending=${pendingMessages.length} context=${contextTime}ms firstToken=${firstTokenTime}ms total=${totalTime}ms contentLen=${aiContent.length}`);
     } catch (error) {
       this.logger.error(`Generate reply failed: ${JSON.stringify(error)}`);
-      if (!clientDisconnected && !res.writableEnded) {
+      // 如果已经生成了部分内容，不写入错误信息到流，直接结束。
+      // 部分内容会在 finally 中保存到数据库，前端刷新后可见。
+      if (!aiContent.trim() && !clientDisconnected && !res.writableEnded) {
         const errMsg = error instanceof Error ? error.message : String(error);
         if (errMsg.includes('API Key') || errMsg.includes('豆包')) {
-          res.write(`\n\n⚠️ ${errMsg}`);
+          res.write(`⚠️ ${errMsg}`);
         } else {
-          res.write('\n\n[生成失败，请重试]');
+          res.write('⚠️ AI暂时无法回复，请重试。');
         }
       }
     } finally {
