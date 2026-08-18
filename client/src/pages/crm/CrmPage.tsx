@@ -445,9 +445,9 @@ const CrmPage = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-[1400px] mx-auto p-6">
+    <div className="h-[calc(100vh-108px)] flex flex-col overflow-hidden max-w-[1400px] mx-auto w-full p-6 gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-foreground">客户管理</h1>
           <p className="text-muted-foreground mt-1">
@@ -481,7 +481,7 @@ const CrmPage = () => {
       </div>
 
       {/* Filter Bar */}
-      <Card className="border border-border shadow-sm">
+      <Card className="border border-border shadow-sm flex-shrink-0">
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="relative flex-1 max-w-sm min-w-[200px]">
@@ -528,13 +528,13 @@ const CrmPage = () => {
       </Card>
 
       {/* Customer List */}
-      <Card className="border border-border shadow-sm overflow-hidden">
+      <Card className="border border-border shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
         {loading ? (
-          <CardContent className="p-12 flex items-center justify-center">
+          <CardContent className="p-12 flex items-center justify-center flex-1">
             <p className="text-muted-foreground text-sm">加载中...</p>
           </CardContent>
         ) : customers.length === 0 ? (
-          <CardContent className="p-12 flex flex-col items-center justify-center text-center">
+          <CardContent className="p-12 flex flex-col items-center justify-center text-center flex-1">
             <div className="aspect-square size-16 rounded-full bg-accent flex items-center justify-center mb-4">
               <Users className="size-8 text-primary" />
             </div>
@@ -551,7 +551,7 @@ const CrmPage = () => {
         ) : (
           <>
             {/* 列表工具栏 */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-accent/20">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-accent/20 flex-shrink-0">
               <span className="text-sm text-muted-foreground">
                 共 <span className="font-semibold text-foreground">{total.toLocaleString()}</span> 个客户
                 {search && <span className="ml-2">（搜索："{search}"）</span>}
@@ -571,10 +571,10 @@ const CrmPage = () => {
                 </button>
               )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="flex-1 min-h-0 overflow-auto">
+              <table className="w-full min-w-[1000px]">
                 <thead>
-                  <tr className="bg-accent/30 text-left">
+                  <tr className="bg-background text-left sticky top-0 z-10 border-b border-border shadow-sm">
                     <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-10">
                       <input
                         type="checkbox"
@@ -717,7 +717,7 @@ const CrmPage = () => {
             </div>
 
             {/* Pagination */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-border">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-border flex-shrink-0 bg-background">
               {/* 左侧：每页数量 + 总数 */}
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span>共 <span className="font-semibold text-foreground">{total.toLocaleString()}</span> 条</span>
