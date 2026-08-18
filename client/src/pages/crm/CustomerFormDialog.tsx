@@ -57,7 +57,7 @@ const INDUSTRY_OPTIONS = [
 
 /** 解析结构化备注 */
 function parseStructuredNotes(notes: string | null) {
-  const result = { legalRep: '', morePhones: [] as string[], emails: [] as string[], website: '', rawNotes: '' };
+  const result = { legalRep: '', validPhones: [] as string[], morePhones: [] as string[], emails: [] as string[], website: '', rawNotes: '' };
   if (!notes) return result;
   const lines = notes.split('\n');
   for (const line of lines) {
@@ -76,6 +76,7 @@ function parseStructuredNotes(notes: string | null) {
     }
     if (key) {
       if (key === '法人' || key === '法定代表人') result.legalRep = value;
+      else if (key === '有效电话') result.validPhones = value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
       else if (key === '更多电话' || key === '其他电话' || key === '备用电话') result.morePhones = value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
       else if (key === '邮箱' || key === '电子邮箱') result.emails = value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
       else if (key === '官网' || key === '官网网址' || key === '网站') result.website = value;
@@ -177,9 +178,12 @@ function CustomerFormDialog({
         setStage(customer.stage);
         const parsed = parseStructuredNotes(customer.notes);
         setLegalRep(parsed.legalRep);
-        // 主电话从contactInfo取，更多电话从notes取
-        const primaryPhone = customer.contactInfo && customer.contactInfo !== '未提供' ? customer.contactInfo : '';
-        setPhones(primaryPhone ? [primaryPhone] : ['']);
+        // 有效电话：优先从notes【有效电话】读取，兼容旧数据从contactInfo读取
+        let validPhones = parsed.validPhones;
+        if (validPhones.length === 0 && customer.contactInfo && customer.contactInfo !== '未提供') {
+          validPhones = [customer.contactInfo];
+        }
+        setPhones(validPhones.length > 0 ? validPhones : ['']);
         setMorePhones(parsed.morePhones);
         setEmails(parsed.emails);
         setWebsite(parsed.website);

@@ -86,6 +86,54 @@ const STAGE_LABELS: Record<CustomerStage, string> = {
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
 
+/** 从客户数据中提取有效电话和更多电话 */
+function extractCustomerPhones(cust: Customer): { validPhones: string[]; morePhones: string[] } {
+  const validPhones: string[] = [];
+  const morePhones: string[] = [];
+
+  // 从notes中解析【有效电话】
+  const validMatch = cust.notes?.match(/【有效电话】\s*(.+?)(?:\n|$)/);
+  if (validMatch) {
+    validMatch[1].split(/[,，、]/).forEach(s => {
+      const v = s.trim();
+      if (v) validPhones.push(v);
+    });
+  }
+  // 兼容旧数据：contactInfo作为有效电话
+  if (validPhones.length === 0 && cust.contactInfo && cust.contactInfo !== '未提供') {
+    validPhones.push(cust.contactInfo);
+  }
+
+  // 从notes中解析【更多电话】
+  const moreMatch = cust.notes?.match(/【更多电话】\s*(.+?)(?:\n|$)/);
+  if (moreMatch) {
+    moreMatch[1].split(/[,，、]/).forEach(s => {
+      const v = s.trim();
+      if (v) morePhones.push(v);
+    });
+  }
+
+  return { validPhones, morePhones };
+}
+
+/** 电话列表显示组件：最多显示2个，超出显示+N，悬停显示全部 */
+function PhoneList({ phones, maxShow = 2 }: { phones: string[]; maxShow?: number }) {
+  if (phones.length === 0) return <span className="text-muted-foreground">-</span>;
+  const shown = phones.slice(0, maxShow);
+  const remaining = phones.length - maxShow;
+  const allPhones = phones.join('\n');
+  return (
+    <div className="space-y-0.5" title={allPhones}>
+      {shown.map((p, i) => (
+        <div key={i} className="truncate text-sm">{p}</div>
+      ))}
+      {remaining > 0 && (
+        <div className="text-xs text-primary cursor-default">还有 {remaining} 个</div>
+      )}
+    </div>
+  );
+}
+
 const CrmPage = () => {
   const [stage, setStage] = useState<string>('ALL');
   const [industry, setIndustry] = useState<string>('');
@@ -595,10 +643,10 @@ const CrmPage = () => {
                     <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
                       法人
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[140px]">
                       有效电话
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[180px]">
                       更多电话
                     </th>
                     <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
@@ -655,13 +703,16 @@ const CrmPage = () => {
                           return m ? m[1].trim() : '-';
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {cust.contactInfo && cust.contactInfo !== '未提供' ? cust.contactInfo : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                      <td className="px-4 py-3 text-sm text-muted-foreground align-top">
                         {(() => {
-                          const m = cust.notes?.match(/[【\[]更多电话[】\]]\s*(.+?)(?:\n|$)/) || cust.notes?.match(/更多电话[：:]\s*(.+?)(?:\n|$)/);
-                          return m ? m[1].trim().slice(0, 30) : '-';
+                          const { validPhones } = extractCustomerPhones(cust);
+                          return <PhoneList phones={validPhones} />;
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground align-top">
+                        {(() => {
+                          const { morePhones } = extractCustomerPhones(cust);
+                          return <PhoneList phones={morePhones} />;
                         })()}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">

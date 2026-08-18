@@ -154,10 +154,61 @@ export class CrmService {
   }
 
   /**
-   * 组装结构化备注：将法人/更多电话/邮箱/官网等字段存入notes
+   * 统一电话号码解析函数（单个添加和Excel导入共用）
+   * 处理Excel格式：13800138000.0、'13800138000、"13800138000"、138 0013 8000、138-0013-8000、+86 13800138000
+   * 分类规则：只有明确符合中国大陆11位手机号码的才进入有效电话，其他全部进入更多电话
+   * 自动去重
+   */
+  parsePhoneNumbers(rawPhones: string[]): { validPhones: string[]; morePhones: string[] } {
+    const validSet = new Set<string>();
+    const moreSet = new Set<string>();
+
+    for (const raw of rawPhones) {
+      if (!raw) continue;
+      let cleaned = String(raw).trim();
+      if (!cleaned) continue;
+
+      // 去除Excel文本前缀单引号
+      if (cleaned.startsWith("'")) cleaned = cleaned.slice(1);
+      // 去除首尾引号
+      cleaned = cleaned.replace(/^["']|["']$/g, '').trim();
+      // 去除Excel数字格式的 .0 后缀（仅当整体是数字时）
+      if (/^\d+\.0+$/.test(cleaned)) cleaned = cleaned.replace(/\.0+$/, '');
+
+      if (!cleaned) continue;
+
+      // 尝试提取中国大陆手机号
+      // 去除+86前缀
+      let mobileCandidate = cleaned.replace(/^\+?86[\s-]*/, '');
+      // 去除所有非数字字符
+      const digitsOnly = mobileCandidate.replace(/\D/g, '');
+
+      // 11位数字且以1开头 → 有效电话（中国大陆手机号）
+      if (/^1\d{10}$/.test(digitsOnly)) {
+        validSet.add(digitsOnly);
+        continue;
+      }
+
+      // 其他全部进入更多电话，保留原始格式（座机0769-12345678等）
+      // 但做基本清理：去除首尾空格
+      const moreClean = cleaned.trim();
+      if (moreClean) {
+        moreSet.add(moreClean);
+      }
+    }
+
+    return {
+      validPhones: Array.from(validSet),
+      morePhones: Array.from(moreSet),
+    };
+  }
+
+  /**
+   * 组装结构化备注：将法人/有效电话/更多电话/邮箱/官网等字段存入notes
    */
   private assembleNotes(dto: {
     legalRep?: string;
+    validPhones?: string[];
     morePhones?: string[];
     emails?: string[];
     website?: string;
@@ -165,6 +216,9 @@ export class CrmService {
   }): string | null {
     const parts: string[] = [];
     if (dto.legalRep?.trim()) parts.push(`【法人】${dto.legalRep.trim()}`);
+    if (dto.validPhones && dto.validPhones.filter(Boolean).length > 0) {
+      parts.push(`【有效电话】${dto.validPhones.filter(Boolean).join(', ')}`);
+    }
     if (dto.morePhones && dto.morePhones.filter(Boolean).length > 0) {
       parts.push(`【更多电话】${dto.morePhones.filter(Boolean).join(', ')}`);
     }
@@ -181,12 +235,13 @@ export class CrmService {
    */
   parseStructuredNotes(notes: string | null): {
     legalRep: string;
+    validPhones: string[];
     morePhones: string[];
     emails: string[];
     website: string;
     rawNotes: string;
   } {
-    const result = { legalRep: '', morePhones: [] as string[], emails: [] as string[], website: '', rawNotes: '' };
+    const result = { legalRep: '', validPhones: [] as string[], morePhones: [] as string[], emails: [] as string[], website: '', rawNotes: '' };
     if (!notes) return result;
     const lines = notes.split('\n');
     for (const line of lines) {
@@ -207,6 +262,7 @@ export class CrmService {
       }
       if (key) {
         if (key === '法人' || key === '法定代表人') result.legalRep = value;
+        else if (key === '有效电话') result.validPhones = value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
         else if (key === '更多电话' || key === '其他电话' || key === '备用电话') result.morePhones = value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
         else if (key === '邮箱' || key === '电子邮箱') result.emails = value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
         else if (key === '官网' || key === '官网网址' || key === '网站') result.website = value;
@@ -219,11 +275,19 @@ export class CrmService {
   }
 
   async createCustomer(dto: CreateCustomerRequest, userId: string): Promise<Customer> {
-    const phones = (dto.phones || []).filter(Boolean);
-    const primaryPhone = phones[0] || dto.contactInfo || '';
+    // 收集所有电话，统一解析分类
+    const allRawPhones: string[] = [];
+    if (dto.phones && dto.phones.length > 0) allRawPhones.push(...dto.phones);
+    if (dto.morePhones && dto.morePhones.length > 0) allRawPhones.push(...dto.morePhones);
+    if (dto.contactInfo) allRawPhones.push(dto.contactInfo);
+
+    const { validPhones, morePhones } = this.parsePhoneNumbers(allRawPhones);
+    const primaryPhone = validPhones[0] || morePhones[0] || '';
+
     const structuredNotes = this.assembleNotes({
       legalRep: dto.legalRep,
-      morePhones: [...(phones.slice(1) || []), ...(dto.morePhones || [])],
+      validPhones,
+      morePhones,
       emails: dto.emails,
       website: dto.website,
       notes: dto.notes,
@@ -289,16 +353,45 @@ export class CrmService {
 
     if (hasNewFields) {
       const parsed = this.parseStructuredNotes(existing[0].notes);
-      const phones = dto.phones !== undefined ? dto.phones.filter(Boolean) : [existing[0].contactInfo].filter(Boolean);
-      const primaryPhone = phones[0] || '';
-      if (dto.contactInfo !== undefined) patch.contactInfo = dto.contactInfo || primaryPhone || '未提供';
-      else if (phones.length > 0) patch.contactInfo = primaryPhone;
+
+      // 收集所有电话：用户新输入的 + 旧数据（兼容没有【有效电话】字段的旧数据）
+      const allRawPhones: string[] = [];
+
+      // 用户新输入的有效电话
+      if (dto.phones !== undefined) {
+        allRawPhones.push(...dto.phones);
+      } else if (parsed.validPhones.length > 0) {
+        // 没有新输入有效电话时，保留旧的有效电话
+        allRawPhones.push(...parsed.validPhones);
+      } else if (existing[0].contactInfo && existing[0].contactInfo !== '未提供') {
+        // 兼容旧数据：contactInfo作为有效电话
+        allRawPhones.push(existing[0].contactInfo);
+      }
+
+      // 用户新输入的更多电话
+      if (dto.morePhones !== undefined) {
+        allRawPhones.push(...dto.morePhones);
+      } else {
+        // 没有新输入更多电话时，保留旧的更多电话
+        allRawPhones.push(...parsed.morePhones);
+      }
+
+      // contactInfo字段（如果单独传入）
+      if (dto.contactInfo !== undefined && dto.contactInfo) {
+        allRawPhones.push(dto.contactInfo);
+      }
+
+      // 统一解析分类
+      const { validPhones, morePhones } = this.parsePhoneNumbers(allRawPhones);
+      const primaryPhone = validPhones[0] || morePhones[0] || '';
+
+      // 更新contactInfo（第一个有效电话，或第一个更多电话）
+      patch.contactInfo = primaryPhone || '未提供';
 
       const structuredNotes = this.assembleNotes({
         legalRep: dto.legalRep !== undefined ? dto.legalRep : parsed.legalRep,
-        morePhones: dto.morePhones !== undefined
-          ? [...(phones.slice(1) || []), ...dto.morePhones.filter(Boolean)]
-          : [...(phones.slice(1) || []), ...parsed.morePhones],
+        validPhones,
+        morePhones,
         emails: dto.emails !== undefined ? dto.emails.filter(Boolean) : parsed.emails,
         website: dto.website !== undefined ? dto.website : parsed.website,
         notes: dto.notes !== undefined ? dto.notes : parsed.rawNotes,
@@ -553,7 +646,7 @@ export class CrmService {
       }
 
       if (allPhoneValues.length > 0) {
-        const { validPhones, morePhones } = this.classifyPhones(allPhoneValues);
+        const { validPhones, morePhones } = this.parsePhoneNumbers(allPhoneValues);
         // 回写到行数据
         if (phoneCols.length > 0) {
           result[phoneCols[0]] = validPhones.join(', ');
@@ -599,27 +692,6 @@ export class CrmService {
       .where(eq(customer.createdBy, userId));
     const existingSet = new Set(existing.map((c) => c.company.trim()));
     return new Set(companies.filter((c) => existingSet.has(c.trim())));
-  }
-
-  /**
-   * 电话号码分类：
-   * - 11位纯数字 → 有效电话
-   * - 其他（12位、带区号座机、无法识别）→ 更多电话
-   */
-  private classifyPhones(rawPhones: string[]): { validPhones: string[]; morePhones: string[] } {
-    const validPhones: string[] = [];
-    const morePhones: string[] = [];
-    for (const phone of rawPhones) {
-      const cleaned = phone.trim();
-      if (!cleaned) continue;
-      // 11位纯数字 → 有效电话
-      if (/^\d{11}$/.test(cleaned)) {
-        validPhones.push(cleaned);
-      } else {
-        morePhones.push(cleaned);
-      }
-    }
-    return { validPhones, morePhones };
   }
 
   /**
@@ -669,7 +741,7 @@ export class CrmService {
         } else if (c.morePhone) {
           allPhones = [...allPhones, ...c.morePhone.split(/[,，、\n]/).map(s => s.trim()).filter(Boolean)];
         }
-        const { validPhones, morePhones } = this.classifyPhones(allPhones);
+        const { validPhones, morePhones } = this.parsePhoneNumbers(allPhones);
         // 邮箱
         let emails: string[] = [];
         if (c.emails && c.emails.length > 0) {
@@ -681,7 +753,8 @@ export class CrmService {
         const primaryPhone = validPhones[0] || '';
         const structuredNotes = this.assembleNotes({
           legalRep: c.legalRep,
-          morePhones: [...validPhones.slice(1), ...morePhones],
+          validPhones,
+          morePhones,
           emails,
           website: c.website,
           notes: c.notes,
