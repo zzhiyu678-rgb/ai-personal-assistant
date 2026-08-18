@@ -39,7 +39,6 @@ const AssistantPage = () => {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AiMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isSending, setIsSending] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -47,11 +46,21 @@ const AssistantPage = () => {
   const [editingTitle, setEditingTitle] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  // 按 conversationId 分组的临时消息（用户消息+AI占位），用于流式生成期间和切换对话后保持
+  const [pendingMessages, setPendingMessages] = useState<Record<string, AiMessage[]>>({});
+  // 按 assistant 临时消息ID 存储流式生成中的内容
+  const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const currentIdRef = useRef<string | null>(null);
+
+  // 同步 currentId 到 ref，供异步回调中读取最新值
+  useEffect(() => {
+    currentIdRef.current = currentId;
+  }, [currentId]);
 
   const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -129,7 +138,12 @@ const AssistantPage = () => {
 
   // 轮询：如果最后一条是用户消息且无AI回复，每3秒检查一次（处理切换页面后AI仍在生成的情况）
   useEffect(() => {
-    if (!currentId || messages.length === 0) return;
+    if (!currentId) return;
+    const pending = pendingMessages[currentId] || [];
+    const hasPendingAssistant = pending.some(m => m.role === 'assistant');
+    // 如果当前对话有正在生成的临时AI消息，不需要轮询（流式回调会更新）
+    if (hasPendingAssistant) return;
+    if (messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role !== 'user') return;
 
@@ -146,7 +160,7 @@ const AssistantPage = () => {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [currentId, messages.length]);
+  }, [currentId, messages.length, pendingMessages]);
 
   const handleNewConversation = async () => {
     try {
@@ -168,6 +182,21 @@ const AssistantPage = () => {
     try {
       await deleteConversation(id);
       setConversations((prev) => prev.filter((c) => c.id !== id));
+      // 清理该对话的临时消息和流式内容
+      const pendingList = pendingMessages[id] || [];
+      const assistantIds = pendingList.filter(m => m.role === 'assistant').map(m => m.id);
+      setPendingMessages((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (assistantIds.length > 0) {
+        setStreamingContent((prev) => {
+          const next = { ...prev };
+          for (const aid of assistantIds) delete next[aid];
+          return next;
+        });
+      }
       if (currentId === id) {
         setCurrentId(null);
         setMessages([]);
@@ -298,7 +327,7 @@ const AssistantPage = () => {
 
   const handleSend = async () => {
     const readyAttachments = attachments.filter((a) => a.status === 'ready');
-    if ((!input.trim() && readyAttachments.length === 0) || isSending) return;
+    if (!input.trim() && readyAttachments.length === 0) return;
     if (attachments.some((a) => a.status === 'processing')) {
       alert('请等待文件处理完成');
       return;
@@ -311,7 +340,6 @@ const AssistantPage = () => {
       content: a.content,
     }));
     setAttachments([]);
-    setIsSending(true);
 
     // 确保有当前对话，没有则自动创建
     let convId = currentId;
@@ -323,53 +351,87 @@ const AssistantPage = () => {
         setCurrentId(conv.id);
       } catch (error) {
         logger.error('创建对话失败', error);
-        setIsSending(false);
         return;
       }
     }
 
-    // 立即插入用户消息（乐观更新）
+    // 为本次请求生成唯一ID，确保流式内容绑定到正确的消息
+    const userTempId = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const assistantTempId = `temp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     const userMsg: AiMessage = {
-      id: `temp-user-${Date.now()}`,
+      id: userTempId,
       conversationId: convId,
       role: 'user',
       content,
       createdAt: new Date().toISOString(),
     };
     const assistantMsg: AiMessage = {
-      id: `temp-assistant-${Date.now()}`,
+      id: assistantTempId,
       conversationId: convId,
       role: 'assistant',
       content: '',
       createdAt: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+    // 将临时消息放入 pendingMessages（按 conversationId 分组），切换对话不会丢失
+    setPendingMessages((prev) => ({
+      ...prev,
+      [convId]: [...(prev[convId] || []), userMsg, assistantMsg],
+    }));
+    setStreamingContent((prev) => ({ ...prev, [assistantTempId]: '' }));
 
     try {
       await sendStreamMessage(convId, { content, attachments: sentAttachments }, (fullText: string) => {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (!last || last.role !== 'assistant') return prev;
-          return [...prev.slice(0, -1), { ...last, content: fullText }];
-        });
+        // 只更新本次请求对应的 assistant 消息内容，按 messageId 精确绑定
+        setStreamingContent((prev) => ({ ...prev, [assistantTempId]: fullText }));
       });
 
-      // 发送完成后延迟刷新列表，等待后端异步生成标题
+      // 发送完成后，从 pending 中移除临时消息，并刷新当前对话（如果正在查看）
+      setPendingMessages((prev) => {
+        const list = (prev[convId] || []).filter(
+          (m) => m.id !== userTempId && m.id !== assistantTempId,
+        );
+        return { ...prev, [convId]: list };
+      });
+      setStreamingContent((prev) => {
+        const next = { ...prev };
+        delete next[assistantTempId];
+        return next;
+      });
+
+      // 如果当前正在查看这个对话，刷新消息列表获取真实数据库消息
+      if (currentIdRef.current === convId) {
+        getMessages(convId)
+          .then((data) => setMessages(data.items))
+          .catch(() => {});
+      }
+
+      // 延迟刷新对话列表，等待后端异步生成标题
       setTimeout(() => {
         loadConversations();
       }, 2000);
     } catch (error) {
       logger.error('发送消息失败', error);
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (!last || last.role !== 'assistant') return prev;
-        return [
-          ...prev.slice(0, -1),
-          { ...last, content: last.content || '[发送失败，请重试]' },
-        ];
-      });
-    } finally {
-      setIsSending(false);
+      // 标记错误内容，保留在 pending 中让用户看到
+      setStreamingContent((prev) => ({
+        ...prev,
+        [assistantTempId]: prev[assistantTempId] || '[发送失败，请重试]',
+      }));
+      // 3秒后移除错误的临时消息
+      setTimeout(() => {
+        setPendingMessages((prev) => {
+          const list = (prev[convId] || []).filter(
+            (m) => m.id !== userTempId && m.id !== assistantTempId,
+          );
+          return { ...prev, [convId]: list };
+        });
+        setStreamingContent((prev) => {
+          const next = { ...prev };
+          delete next[assistantTempId];
+          return next;
+        });
+      }, 3000);
     }
   };
 
@@ -394,8 +456,34 @@ const AssistantPage = () => {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
-  const displayMessages = messages;
-  const showWelcome = !isSending && messages.length === 0;
+  // 合并数据库消息 + 临时消息（流式生成中），并去重用户消息
+  const pending = currentId ? (pendingMessages[currentId] || []) : [];
+  const displayMessages: AiMessage[] = [];
+  for (const msg of messages) {
+    displayMessages.push(msg);
+  }
+  for (const pm of pending) {
+    if (pm.role === 'user') {
+      // 去重：如果数据库中已有相同内容的用户消息，跳过临时的
+      const dup = messages.some((m) => m.role === 'user' && m.content === pm.content);
+      if (dup) continue;
+    }
+    // 临时AI消息使用流式内容
+    if (pm.role === 'assistant') {
+      displayMessages.push({ ...pm, content: streamingContent[pm.id] ?? pm.content });
+    } else {
+      displayMessages.push(pm);
+    }
+  }
+
+  // 判断最后一条AI消息是否正在流式生成
+  const lastMsg = displayMessages[displayMessages.length - 1];
+  const isLastStreaming =
+    lastMsg?.role === 'assistant' &&
+    lastMsg.id.startsWith('temp-assistant-') &&
+    streamingContent[lastMsg.id] !== undefined;
+
+  const showWelcome = displayMessages.length === 0;
 
   return (
     <div className="h-full md:h-[calc(100vh-108px)] min-h-0 overflow-hidden flex">
@@ -603,7 +691,7 @@ const AssistantPage = () => {
                       <p className="text-foreground leading-relaxed whitespace-pre-wrap">
                         {msg.content}
                         {msg.role === 'assistant' &&
-                          isSending &&
+                          isLastStreaming &&
                           msg === displayMessages[displayMessages.length - 1] && (
                             <span className="inline-block w-2 h-5 bg-primary ml-1 align-middle animate-pulse rounded-sm" />
                           )}
@@ -687,7 +775,6 @@ const AssistantPage = () => {
               variant="ghost"
               size="icon"
               onClick={() => imageInputRef.current?.click()}
-              disabled={isSending}
               className="shrink-0 h-11 w-11 rounded-full"
               title="上传图片"
             >
@@ -697,7 +784,6 @@ const AssistantPage = () => {
               variant="ghost"
               size="icon"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isSending}
               className="shrink-0 h-11 w-11 rounded-full"
               title="上传文件"
             >
@@ -715,12 +801,11 @@ const AssistantPage = () => {
                 placeholder:text-muted-foreground
                 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary
                 resize-none text-sm leading-relaxed"
-              disabled={isSending}
             />
             <Button
               size="icon"
               onClick={handleSend}
-              disabled={(!input.trim() && attachments.filter((a) => a.status === 'ready').length === 0) || isSending}
+              disabled={!input.trim() && attachments.filter((a) => a.status === 'ready').length === 0}
               className="shrink-0 h-11 w-11 rounded-full"
             >
               <Send className="size-4" />
