@@ -86,6 +86,11 @@ const STAGE_LABELS: Record<CustomerStage, string> = {
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
 
+/** 判断是否为11位中国大陆手机号 */
+function isValidMobile(value: string): boolean {
+  return /^1\d{10}$/.test(value.trim());
+}
+
 /** 判断是否为邮箱格式 */
 function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -104,8 +109,8 @@ function extractCustomerPhones(cust: Customer): { validPhones: string[]; morePho
       if (v && !isEmail(v)) validPhones.push(v);
     });
   }
-  // 兼容旧数据：contactInfo作为有效电话（但过滤邮箱）
-  if (validPhones.length === 0 && cust.contactInfo && cust.contactInfo !== '未提供' && !isEmail(cust.contactInfo)) {
+  // 兼容旧数据：contactInfo作为有效电话（但必须是11位手机号，且不是邮箱）
+  if (validPhones.length === 0 && cust.contactInfo && cust.contactInfo !== '未提供' && !isEmail(cust.contactInfo) && isValidMobile(cust.contactInfo)) {
     validPhones.push(cust.contactInfo);
   }
 

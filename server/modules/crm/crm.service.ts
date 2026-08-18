@@ -299,7 +299,7 @@ export class CrmService {
     if (dto.contactInfo) allRawPhones.push(dto.contactInfo);
 
     const { validPhones, morePhones } = this.parsePhoneNumbers(allRawPhones);
-    const primaryPhone = validPhones[0] || morePhones[0] || '';
+    const primaryPhone = validPhones[0] || '';
 
     const structuredNotes = this.assembleNotes({
       legalRep: dto.legalRep,
@@ -400,7 +400,7 @@ export class CrmService {
 
       // 统一解析分类
       const { validPhones, morePhones } = this.parsePhoneNumbers(allRawPhones);
-      const primaryPhone = validPhones[0] || morePhones[0] || '';
+      const primaryPhone = validPhones[0] || '';
 
       // 更新contactInfo（第一个有效电话，或第一个更多电话）
       patch.contactInfo = primaryPhone || '未提供';
@@ -824,7 +824,7 @@ export class CrmService {
         }
 
         // contactInfo只放电话号码，绝对不能放邮箱
-        const primaryPhone = validPhones[0] || morePhones[0] || '';
+        const primaryPhone = validPhones[0] || '';
         const structuredNotes = this.assembleNotes({
           legalRep: c.legalRep,
           validPhones,
