@@ -11,6 +11,8 @@ import {
   deleteConversation,
   sendStreamMessage,
   updateConversationTitle,
+  saveMessage,
+  generateReplyStream,
 } from '@client/src/api/ai-conversation';
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 
@@ -50,12 +52,22 @@ const AssistantPage = () => {
   const [pendingMessages, setPendingMessages] = useState<Record<string, AiMessage[]>>({});
   // 按 assistant 临时消息ID 存储流式生成中的内容
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
+  // 处于 debounce 等待期的对话ID（用户连续发送消息，等待合并）
+  const [waitingDebounceConvId, setWaitingDebounceConvId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const currentIdRef = useRef<string | null>(null);
+  // debounce 定时器
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 是否正在生成AI回复
+  const isGeneratingRef = useRef(false);
+  // 上一次generate开始后新发送的消息数（生成期间用户发的消息）
+  const pendingDuringGenerationRef = useRef(0);
+  // debounce 窗口时长（毫秒）
+  const DEBOUNCE_MS = 1500;
 
   // 同步 currentId 到 ref，供异步回调中读取最新值
   useEffect(() => {
@@ -139,6 +151,8 @@ const AssistantPage = () => {
   // 轮询：如果最后一条是用户消息且无AI回复，每3秒检查一次（处理切换页面后AI仍在生成的情况）
   useEffect(() => {
     if (!currentId) return;
+    // debounce等待期或正在生成时，不需要轮询
+    if (waitingDebounceConvId === currentId || isGeneratingRef.current) return;
     const pending = pendingMessages[currentId] || [];
     const hasPendingAssistant = pending.some(m => m.role === 'assistant');
     // 如果当前对话有正在生成的临时AI消息，不需要轮询（流式回调会更新）
@@ -160,7 +174,7 @@ const AssistantPage = () => {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [currentId, messages.length, pendingMessages]);
+  }, [currentId, messages.length, pendingMessages, waitingDebounceConvId]);
 
   const handleNewConversation = async () => {
     try {
@@ -196,6 +210,14 @@ const AssistantPage = () => {
           for (const aid of assistantIds) delete next[aid];
           return next;
         });
+      }
+      // 如果删除的是正在debounce的对话，清除定时器
+      if (waitingDebounceConvId === id) {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+        }
+        setWaitingDebounceConvId(null);
       }
       if (currentId === id) {
         setCurrentId(null);
@@ -355,10 +377,8 @@ const AssistantPage = () => {
       }
     }
 
-    // 为本次请求生成唯一ID，确保流式内容绑定到正确的消息
+    // 生成临时用户消息ID（乐观UI）
     const userTempId = `temp-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const assistantTempId = `temp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
     const userMsg: AiMessage = {
       id: userTempId,
       conversationId: convId,
@@ -366,6 +386,53 @@ const AssistantPage = () => {
       content,
       createdAt: new Date().toISOString(),
     };
+
+    // 立即显示用户消息（乐观更新）
+    setPendingMessages((prev) => ({
+      ...prev,
+      [convId]: [...(prev[convId] || []), userMsg],
+    }));
+
+    // 后端只保存用户消息，不触发AI
+    try {
+      await saveMessage(convId, { content, attachments: sentAttachments });
+    } catch (error) {
+      logger.error('保存消息失败', error);
+      // 保存失败，移除临时消息
+      setPendingMessages((prev) => ({
+        ...prev,
+        [convId]: (prev[convId] || []).filter((m) => m.id !== userTempId),
+      }));
+      alert('消息发送失败，请重试');
+      return;
+    }
+
+    // 如果AI正在生成，这条消息等当前生成完成后再进入下一轮
+    if (isGeneratingRef.current) {
+      pendingDuringGenerationRef.current += 1;
+      return;
+    }
+
+    // 没有在生成，启动/重置 debounce 定时器
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setWaitingDebounceConvId(convId);
+    debounceTimerRef.current = setTimeout(() => {
+      void flushPendingMessages(convId);
+    }, DEBOUNCE_MS);
+  };
+
+  /**
+   * debounce 窗口结束后调用：合并本轮所有未回复的用户消息，生成一次AI回复。
+   */
+  const flushPendingMessages = async (convId: string) => {
+    debounceTimerRef.current = null;
+    setWaitingDebounceConvId(null);
+    isGeneratingRef.current = true;
+
+    // 创建AI占位消息
+    const assistantTempId = `temp-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const assistantMsg: AiMessage = {
       id: assistantTempId,
       conversationId: convId,
@@ -373,25 +440,20 @@ const AssistantPage = () => {
       content: '',
       createdAt: new Date().toISOString(),
     };
-
-    // 将临时消息放入 pendingMessages（按 conversationId 分组），切换对话不会丢失
     setPendingMessages((prev) => ({
       ...prev,
-      [convId]: [...(prev[convId] || []), userMsg, assistantMsg],
+      [convId]: [...(prev[convId] || []), assistantMsg],
     }));
     setStreamingContent((prev) => ({ ...prev, [assistantTempId]: '' }));
 
     try {
-      await sendStreamMessage(convId, { content, attachments: sentAttachments }, (fullText: string) => {
-        // 只更新本次请求对应的 assistant 消息内容，按 messageId 精确绑定
+      await generateReplyStream(convId, (fullText: string) => {
         setStreamingContent((prev) => ({ ...prev, [assistantTempId]: fullText }));
       });
 
-      // 发送完成后，从 pending 中移除临时消息，并刷新当前对话（如果正在查看）
+      // 生成完成，清理临时消息
       setPendingMessages((prev) => {
-        const list = (prev[convId] || []).filter(
-          (m) => m.id !== userTempId && m.id !== assistantTempId,
-        );
+        const list = (prev[convId] || []).filter((m) => m.id !== assistantTempId && !m.id.startsWith('temp-user-'));
         return { ...prev, [convId]: list };
       });
       setStreamingContent((prev) => {
@@ -400,30 +462,27 @@ const AssistantPage = () => {
         return next;
       });
 
-      // 如果当前正在查看这个对话，刷新消息列表获取真实数据库消息
+      // 如果当前正在查看这个对话，刷新消息列表
       if (currentIdRef.current === convId) {
         getMessages(convId)
           .then((data) => setMessages(data.items))
           .catch(() => {});
       }
 
-      // 延迟刷新对话列表，等待后端异步生成标题
+      // 延迟刷新对话列表（等待标题生成）
       setTimeout(() => {
         loadConversations();
       }, 2000);
     } catch (error) {
-      logger.error('发送消息失败', error);
-      // 标记错误内容，保留在 pending 中让用户看到
+      logger.error('生成回复失败', error);
       setStreamingContent((prev) => ({
         ...prev,
-        [assistantTempId]: prev[assistantTempId] || '[发送失败，请重试]',
+        [assistantTempId]: prev[assistantTempId] || '[生成失败，请重试]',
       }));
       // 3秒后移除错误的临时消息
       setTimeout(() => {
         setPendingMessages((prev) => {
-          const list = (prev[convId] || []).filter(
-            (m) => m.id !== userTempId && m.id !== assistantTempId,
-          );
+          const list = (prev[convId] || []).filter((m) => m.id !== assistantTempId);
           return { ...prev, [convId]: list };
         });
         setStreamingContent((prev) => {
@@ -432,8 +491,28 @@ const AssistantPage = () => {
           return next;
         });
       }, 3000);
+    } finally {
+      isGeneratingRef.current = false;
+
+      // 如果生成期间用户又发了新消息，启动新一轮 debounce
+      if (pendingDuringGenerationRef.current > 0) {
+        pendingDuringGenerationRef.current = 0;
+        setWaitingDebounceConvId(convId);
+        debounceTimerRef.current = setTimeout(() => {
+          void flushPendingMessages(convId);
+        }, DEBOUNCE_MS);
+      }
     }
   };
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -710,6 +789,27 @@ const AssistantPage = () => {
                 )}
               </div>
             ))
+          )}
+          {/* debounce 等待期提示 */}
+          {waitingDebounceConvId === currentId && (
+            <div className="flex justify-start">
+              <div className="flex gap-3 max-w-[80%]">
+                <div
+                  className="shrink-0 size-9 rounded-full flex items-center justify-center
+                    bg-gradient-to-br from-primary to-blue-400 text-white mt-1"
+                >
+                  <Bot className="size-5" />
+                </div>
+                <div
+                  className="bg-card border border-border rounded-2xl rounded-tl-sm
+                    p-4 shadow-sm border-l-2 border-l-primary"
+                >
+                  <p className="text-foreground leading-relaxed text-sm text-muted-foreground">
+                    正在整理你的消息...
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>

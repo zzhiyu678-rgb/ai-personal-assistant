@@ -194,6 +194,68 @@ export class AiConversationService {
     return Number(result?.count ?? 0) === 0;
   }
 
+  /**
+   * 获取当前对话中"尚未得到AI回复"的用户消息。
+   * 即：最后一条 assistant 消息之后的所有 user 消息。
+   * 如果没有 assistant 消息，则返回所有 user 消息。
+   * 用于连续消息合并：将这些消息作为一次完整表达发送给AI。
+   */
+  async getPendingUserMessages(
+    conversationId: string,
+    userId: string,
+  ): Promise<AiMessage[]> {
+    await this.verifyOwnership(conversationId, userId);
+
+    // 找到最后一条 assistant 消息的时间
+    const lastAssistant = await this.db
+      .select({ createdAt: aiMessageTable.createdAt })
+      .from(aiMessageTable)
+      .where(
+        and(
+          eq(aiMessageTable.conversationId, conversationId),
+          eq(aiMessageTable.role, 'assistant'),
+        ),
+      )
+      .orderBy(desc(aiMessageTable.createdAt))
+      .limit(1);
+
+    let userMessages;
+    if (lastAssistant.length > 0) {
+      // 取最后一条assistant之后的所有user消息
+      userMessages = await this.db
+        .select()
+        .from(aiMessageTable)
+        .where(
+          and(
+            eq(aiMessageTable.conversationId, conversationId),
+            eq(aiMessageTable.role, 'user'),
+            sql`${aiMessageTable.createdAt} > ${lastAssistant[0].createdAt}`,
+          ),
+        )
+        .orderBy(asc(aiMessageTable.createdAt));
+    } else {
+      // 没有assistant消息，取所有user消息
+      userMessages = await this.db
+        .select()
+        .from(aiMessageTable)
+        .where(
+          and(
+            eq(aiMessageTable.conversationId, conversationId),
+            eq(aiMessageTable.role, 'user'),
+          ),
+        )
+        .orderBy(asc(aiMessageTable.createdAt));
+    }
+
+    return userMessages.map((msg) => ({
+      id: msg.id,
+      conversationId: msg.conversationId,
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+      createdAt: msg.createdAt.toISOString(),
+    }));
+  }
+
   async updateConversationTitle(
     conversationId: string,
     title: string,
