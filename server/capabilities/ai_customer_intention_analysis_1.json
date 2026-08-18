@@ -1,0 +1,58 @@
+{
+  "id": "ai_customer_intention_analysis_1",
+  "pluginKey": "@official-plugins/ai-text-to-json",
+  "pluginVersion": "1.0.24",
+  "name": "AI客户意向分析",
+  "description": "分析客户资料及跟进记录，判断客户意向等级、成交概率，提取客户顾虑并给出沟通建议和下一步行动。",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "customer_follow_records": {
+        "type": "string",
+        "description": "客户资料及全部跟进记录内容"
+      }
+    },
+    "required": [
+      "customer_follow_records"
+    ]
+  },
+  "formValue": {
+    "prompt": "你是一位资深的客户成功专家，擅长通过客户资料和跟进记录分析客户意向，为销售团队提供精准的沟通指导。\n\n请分析以下客户资料和跟进记录：\n{{input.customer_follow_records}}\n\n分析要求：\n1. 意向等级分为：高、中、低三个级别\n2. 成交概率为0-100之间的整数，数值越高表示成交可能性越大\n3. 客户顾虑提取客户明确提到或潜在的担忧、疑问、抗拒点\n4. 沟通建议给出针对性的沟通策略和回应话术方向\n5. 下一步行动给出具体可执行的跟进动作，时间建议等",
+    "jsonStructure": [
+      {
+        "name": "intentionLevel",
+        "paramType": "String",
+        "paramDescription": "客户意向等级，可选值：高、中、低"
+      },
+      {
+        "name": "dealProbability",
+        "paramType": "Number",
+        "paramDescription": "成交概率，0-100之间的整数"
+      },
+      {
+        "paramType": "Array",
+        "paramDescription": "客户顾虑列表，items schema: {string(客户顾虑内容)}",
+        "name": "concerns"
+      },
+      {
+        "paramDescription": "沟通建议列表，items schema: {string(具体沟通建议内容)}",
+        "name": "suggestions",
+        "paramType": "Array"
+      },
+      {
+        "name": "nextStep",
+        "paramType": "String",
+        "paramDescription": "下一步具体行动建议"
+      }
+    ],
+    "modelID": "2015",
+    "modelParams": {
+      "temperature": 0.5,
+      "maxTokens": 8192
+    }
+  },
+  "createdAt": 1786976168006,
+  "updatedAt": 1786976168006,
+  "createdBy": 7667228592018820347
+}

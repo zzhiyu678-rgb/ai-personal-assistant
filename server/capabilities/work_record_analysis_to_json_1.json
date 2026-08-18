@@ -1,0 +1,58 @@
+{
+  "id": "work_record_analysis_to_json_1",
+  "pluginKey": "@official-plugins/ai-text-to-json",
+  "pluginVersion": "1.0.24",
+  "name": "每日工作记录结构化分析",
+  "description": "将每日工作记录文本（包含工作内容、目标摘要、历史记录摘要）自动转换为结构化JSON分析结果，包含质量评分、亮点、问题、建议和下一步行动",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "work_record_content": {
+        "type": "string",
+        "description": "工作记录内容，包含当日工作内容、目标完成情况摘要、历史工作记录摘要的完整文本"
+      }
+    },
+    "required": [
+      "work_record_content"
+    ]
+  },
+  "formValue": {
+    "modelID": "2015",
+    "modelParams": {
+      "maxTokens": 8192,
+      "temperature": 0.5
+    },
+    "prompt": "你是一位专业的工作效能分析专家，擅长从工作记录中客观评估工作完成情况、识别亮点与问题并提供 actionable 改进建议。\n\n请对以下工作记录进行全面分析：\n{{input.work_record_content}}\n\n分析要求：\n1. qualityScore：基于工作完成度、质量、目标达成情况给出0-100的整数评分，评分需客观公正\n2. highlights：提炼3-5条工作中的亮点和做得好的地方，每条不超过50字\n3. problems：识别2-4条存在的问题和不足，每条不超过50字\n4. suggestions：对应问题给出具体可落地的改进建议，每条不超过50字\n5. nextActions：给出3-5条明确的下一步行动计划，每条不超过50字\n\n所有内容需基于输入文本，不得虚构信息；未明确提及的内容可结合上下文合理推断但需符合常规工作逻辑。",
+    "jsonStructure": [
+      {
+        "name": "qualityScore",
+        "paramType": "Number",
+        "paramDescription": "完成质量评分，0-100的整数"
+      },
+      {
+        "name": "highlights",
+        "paramType": "Array",
+        "paramDescription": "亮点总结列表，items schema: {string(具体亮点描述)}"
+      },
+      {
+        "name": "problems",
+        "paramType": "Array",
+        "paramDescription": "存在的问题列表，items schema: {string(具体问题描述)}"
+      },
+      {
+        "name": "suggestions",
+        "paramType": "Array",
+        "paramDescription": "改进建议列表，items schema: {string(具体建议内容)}"
+      },
+      {
+        "name": "nextActions",
+        "paramType": "Array",
+        "paramDescription": "下一步行动列表，items schema: {string(具体行动内容)}"
+      }
+    ]
+  },
+  "createdAt": 1786976156090,
+  "updatedAt": 1786976156090,
+  "createdBy": 7667228592018820347
+}

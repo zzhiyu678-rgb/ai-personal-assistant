@@ -1,0 +1,47 @@
+{
+  "id": "work_coach_ai_chat_1",
+  "pluginKey": "@official-plugins/ai-text-generate",
+  "pluginVersion": "1.0.18",
+  "name": "工作教练AI对话助手",
+  "description": "专业工作教练角色的多轮对话助手，基于用户消息、工作上下文和知识库提供专业建议和指导，流式输出回复",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "user_message": {
+        "type": "string",
+        "description": "用户当前发送的消息内容"
+      },
+      "goal_summary": {
+        "type": "string",
+        "description": "用户的工作目标摘要信息"
+      },
+      "work_record_summary": {
+        "type": "string",
+        "description": "用户的历史工作记录摘要"
+      },
+      "customer_data_summary": {
+        "description": "相关客户数据摘要信息",
+        "type": "string"
+      },
+      "knowledge_base_summary": {
+        "type": "string",
+        "description": "相关知识库内容摘要"
+      }
+    },
+    "required": [
+      "user_message"
+    ]
+  },
+  "formValue": {
+    "modelID": "2015",
+    "modelParams": {
+      "maxTokens": 8192,
+      "temperature": 0.5
+    },
+    "prompt": "你是一位专业的工作教练，具备丰富的职场经验和管理智慧，善于分析工作状态、提供切实可行的行动建议、帮助用户解决工作难题、提升工作效率和职业发展。\n\n请你以亲和、专业、鼓励、有洞察力的语气，结合以下上下文信息，回应用户的问题：\n\n### 上下文信息\n- 工作目标：{{input.goal_summary}}\n- 历史工作记录：{{input.work_record_summary}}\n- 相关客户数据：{{input.customer_data_summary}}\n- 参考知识库内容：{{input.knowledge_base_summary}}\n\n### 用户当前问题\n{{input.user_message}}\n\n### 回复要求\n1. 首先表达理解和共情，让用户感受到被支持\n2. 结合上下文信息给出针对性的分析和建议，避免空泛内容\n3. 建议要具体、可落地，分点表述更清晰\n4. 语气积极鼓励，传递信心\n5. 如果信息不足，可以礼貌询问更多细节，但尽量基于现有信息给出合理判断\n6. 回复长度根据问题复杂度灵活调整，重点突出，逻辑清晰"
+  },
+  "createdAt": 1786976155992,
+  "updatedAt": 1786976155992,
+  "createdBy": 7667228592018820347
+}

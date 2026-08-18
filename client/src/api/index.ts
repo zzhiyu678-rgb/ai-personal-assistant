@@ -1,0 +1,11 @@
+export * as dashboard from './dashboard';
+export * as goal from './goal';
+export * as dailyRecord from './daily-record';
+export * as aiConversation from './ai-conversation';
+export * as report from './report';
+export * as task from './task';
+export * as crm from './crm';
+export * as chatAnalysis from './chat-analysis';
+export * as knowledge from './knowledge';
+export * as analytics from './analytics';
+export * as memory from './memory';

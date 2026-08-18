@@ -1,0 +1,44 @@
+{
+  "id": "daily_report_generate_1",
+  "pluginKey": "@official-plugins/ai-text-generate",
+  "pluginVersion": "1.0.18",
+  "name": "AI日报生成插件",
+  "description": "基于工作记录、数据统计、目标进度及AI分析摘要，生成专业结构化的日报全文，采用流式输出。",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "work_records": {
+        "type": "string",
+        "description": "今日完成的工作记录明细"
+      },
+      "data_statistics": {
+        "description": "今日工作相关的数据统计结果",
+        "type": "string"
+      },
+      "goal_progress": {
+        "type": "string",
+        "description": "当前阶段目标的完成进度情况"
+      },
+      "ai_analysis_summary": {
+        "type": "string",
+        "description": "AI对今日工作的初步分析摘要"
+      }
+    },
+    "required": [
+      "work_records",
+      "goal_progress"
+    ]
+  },
+  "formValue": {
+    "modelID": "2015",
+    "modelParams": {
+      "maxTokens": 8192,
+      "temperature": 0.5
+    },
+    "prompt": "你是一位专业的工作教练，擅长将零散的工作信息整理为专业、清晰、有建设性的结构化日报。\n\n请基于以下信息生成一份完整的日报：\n今日工作记录：{{input.work_records}}\n今日数据统计：{{input.data_statistics}}\n目标进度情况：{{input.goal_progress}}\nAI分析摘要：{{input.ai_analysis_summary}}\n\n日报结构要求：\n1. 今日工作概览（100字以内）：\n   - 高度概括今日核心工作成果\n   - 整体评价工作完成质量\n\n2. 重点工作详情：\n   - 分点列出3-5项核心工作内容\n   - 每项包含：工作内容、完成情况、取得的成果/遇到的问题\n   - 关键数据用加粗突出显示\n\n3. 目标进度跟踪：\n   - 对比阶段目标，说明当前完成率\n   - 分析进度提前/滞后的原因\n   - 给出后续调整建议\n\n4. 明日工作计划：\n   - 列出3-4项核心待办事项\n   - 明确每项工作的预期目标\n   - 标注优先级（高/中/低）\n\n5. 总结与建议：\n   - 今日工作亮点总结\n   - 可优化的方向及具体改进建议\n   - 鼓励性的总结语\n\n输出要求：\n- 语气专业、客观，同时带有鼓励性\n- 结构清晰，逻辑有条理，使用层级标题\n- 语言简洁流畅，避免冗余表述\n- 总字数控制在800-1200字之间\n- 适合工作场景汇报使用"
+  },
+  "createdAt": 1786976157489,
+  "updatedAt": 1786976157489,
+  "createdBy": 7667228592018820347
+}

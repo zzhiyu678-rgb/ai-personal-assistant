@@ -1,0 +1,38 @@
+{
+  "id": "generate_tomorrow_plan_1",
+  "pluginKey": "@official-plugins/ai-text-to-json",
+  "pluginVersion": "1.0.24",
+  "name": "AI明日计划生成",
+  "description": "根据今日工作记录、目标进度和历史数据摘要，智能生成明日任务计划，包含任务标题、优先级、预计时间和建议理由。",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "input_text": {
+        "type": "string",
+        "description": "今日工作记录+目标进度+历史数据摘要的合并文本"
+      }
+    },
+    "required": [
+      "input_text"
+    ]
+  },
+  "formValue": {
+    "modelID": "2015",
+    "modelParams": {
+      "maxTokens": 8192,
+      "temperature": 0.5
+    },
+    "prompt": "你是一位专业的个人效率管理专家，擅长根据用户的近期工作情况和目标制定科学合理的明日任务计划。请根据以下提供的信息生成明日的任务计划：\n{{input.input_text}}\n\n要求：\n1. 任务安排需结合今日工作完成情况、目标进度和历史数据，具有可行性和针对性\n2. 每个任务需明确优先级，HIGH为最高优先级，必须优先完成；MEDIUM为中等优先级，HIGH完成后执行；LOW为低优先级，剩余时间完成\n3. 预计时间为完成该任务所需的分钟数，需合理估算\n4. 理由部分需简要说明为什么要安排该任务，以及该任务对目标的贡献\n5. 任务数量控制在3-8个之间，避免过多或过少",
+    "jsonStructure": [
+      {
+        "paramDescription": "明日任务列表，items schema: {title: string(任务标题), priority: string(优先级，可选值为HIGH/MEDIUM/LOW), estimatedTime: number(预计时间，单位分钟), reason: string(AI建议理由)}",
+        "name": "tasks",
+        "paramType": "Array"
+      }
+    ]
+  },
+  "createdAt": 1786976155655,
+  "updatedAt": 1786976155655,
+  "createdBy": 7667228592018820347
+}

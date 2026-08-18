@@ -1,0 +1,38 @@
+{
+  "id": "monthly_goal_breakdown_to_weekly_1",
+  "pluginKey": "@official-plugins/ai-text-to-json",
+  "pluginVersion": "1.0.24",
+  "name": "月度目标拆解为周目标",
+  "description": "将输入的月度目标信息和历史数据摘要，自动拆解为可执行的周目标建议，包含目标名称、描述和起止日期。",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "monthly_goal_info": {
+        "type": "string",
+        "description": "月度目标信息及相关历史数据摘要"
+      }
+    },
+    "required": [
+      "monthly_goal_info"
+    ]
+  },
+  "formValue": {
+    "modelParams": {
+      "temperature": 0.5,
+      "maxTokens": 8192
+    },
+    "prompt": "你是一位专业的目标管理专家，擅长将月度目标合理拆解为可执行的周度目标。\n\n请根据以下提供的月度目标信息和历史数据摘要，将其拆解为4-5个周目标：\n月度目标信息：{{input.monthly_goal_info}}\n\n拆解要求：\n1. 周目标要符合月度整体目标的方向，具有可衡量性和可实现性\n2. 周目标之间要逻辑连贯，循序渐进，逐步达成月度目标\n3. 开始日期和结束日期需按自然周顺序排列，格式为YYYY-MM-DD\n4. 每个周目标的描述要具体，包含明确的交付物或可验证的成果\n5. 若历史数据中包含过往目标完成情况，请参考历史数据合理设置本周目标的难度和工作量",
+    "jsonStructure": [
+      {
+        "paramType": "Array",
+        "paramDescription": "周目标列表，items schema: {title: string(周目标名称), description: string(目标描述), startDate: string(开始日期，格式YYYY-MM-DD), endDate: string(结束日期，格式YYYY-MM-DD)}",
+        "name": "goals"
+      }
+    ],
+    "modelID": "2015"
+  },
+  "createdAt": 1786976151121,
+  "updatedAt": 1786976151121,
+  "createdBy": 7667228592018820347
+}

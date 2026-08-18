@@ -1,0 +1,53 @@
+{
+  "id": "chat_analysis_demand_deal_prob_1",
+  "pluginKey": "@official-plugins/ai-text-to-json",
+  "pluginVersion": "1.0.24",
+  "name": "客户聊天内容分析插件",
+  "description": "分析客户聊天内容，提取真实需求、客户顾虑，计算成交概率，并给出下一句话回复建议",
+  "icon": "",
+  "paramsSchema": {
+    "properties": {
+      "chat_text": {
+        "type": "string",
+        "description": "客户聊天记录文本"
+      }
+    },
+    "required": [
+      "chat_text"
+    ],
+    "type": "object"
+  },
+  "formValue": {
+    "jsonStructure": [
+      {
+        "name": "needs",
+        "paramType": "Array",
+        "paramDescription": "客户真实需求列表，items schema: {string(需求内容)}"
+      },
+      {
+        "name": "concerns",
+        "paramType": "Array",
+        "paramDescription": "客户顾虑列表，items schema: {string(顾虑内容)}"
+      },
+      {
+        "name": "dealProbability",
+        "paramType": "Number",
+        "paramDescription": "成交概率，0-100的整数"
+      },
+      {
+        "name": "nextReply",
+        "paramType": "String",
+        "paramDescription": "下一句话回复建议"
+      }
+    ],
+    "modelID": "2015",
+    "modelParams": {
+      "maxTokens": 8192,
+      "temperature": 0.5
+    },
+    "prompt": "你是一位专业的客户销售分析专家，擅长从客户聊天记录中精准识别核心信息。请分析以下客户聊天内容，提取真实需求、客户顾虑，评估成交概率，并给出最适合的下一句回复建议。\n\n聊天内容：{{input.chat_text}}\n\n分析要求：\n1. 真实需求：提取客户明确或潜在的真实需求，每条需求简洁明了\n2. 客户顾虑：识别客户提到的担忧、疑问、不满等负面或犹豫的内容\n3. 成交概率：根据客户态度、需求匹配度、沟通进展等综合评估0-100的整数分数\n4. 下一句话建议：给出自然、专业、符合销售话术的回复建议，能够推进沟通进程\n\n请严格按照指定的JSON结构输出。"
+  },
+  "createdAt": 1786976151770,
+  "updatedAt": 1786976151770,
+  "createdBy": 7667228592018820347
+}

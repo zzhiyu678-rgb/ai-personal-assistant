@@ -1,0 +1,46 @@
+{
+  "id": "periodic_work_summary_generator_1",
+  "pluginKey": "@official-plugins/ai-text-generate",
+  "pluginVersion": "1.0.18",
+  "name": "AI周期工作总结生成",
+  "description": "专业的工作复盘教练，根据周期内数据汇总、目标完成情况、亮点与不足分析，生成完整的周/月工作总结报告，提供客观分析和具体改进建议，流式输出。",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "summary_type": {
+        "description": "总结类型，可选值：周总结、月总结",
+        "type": "string"
+      },
+      "period_data": {
+        "type": "string",
+        "description": "周期内数据汇总"
+      },
+      "goal_completion": {
+        "type": "string",
+        "description": "目标完成情况说明"
+      },
+      "strengths_weaknesses": {
+        "type": "string",
+        "description": "亮点与不足分析"
+      }
+    },
+    "required": [
+      "summary_type",
+      "period_data",
+      "goal_completion",
+      "strengths_weaknesses"
+    ]
+  },
+  "formValue": {
+    "prompt": "你是一位专业的工作复盘教练，具备丰富的企业管理和团队绩效提升经验，擅长客观分析工作数据，给出可落地的改进建议。\n\n请根据以下信息生成一份完整的{{input.summary_type}}报告：\n\n1. 周期内数据汇总：\n{{input.period_data}}\n\n2. 目标完成情况：\n{{input.goal_completion}}\n\n3. 亮点与不足分析：\n{{input.strengths_weaknesses}}\n\n报告结构要求：\n1. 封面/标题：清晰标注周期和总结类型\n2. 工作概述：简要概括周期内核心工作内容和整体完成情况\n3. 成果展示：\n   - 重点突出已完成的核心目标和关键成果\n   - 用数据量化成果，展现价值贡献\n   - 提炼工作亮点和可复用的经验方法\n4. 问题分析：\n   - 客观分析未完成目标的原因\n   - 深入剖析工作中存在的不足和痛点\n   - 明确问题的影响范围和严重程度\n5. 改进计划：\n   - 针对存在的问题提出具体、可落地的改进措施\n   - 明确下一周期的核心目标和关键里程碑\n   - 给出可执行的行动步骤和时间节点\n6. 总结展望：\n   - 整体评价周期内工作表现\n   - 表达对下一阶段工作的信心和期望\n\n写作要求：\n- 语言正式、专业、客观，符合职场报告规范\n- 结构清晰，逻辑严谨，层次分明\n- 重点突出，详略得当，避免冗余\n- 数据准确，分析到位，建议具体可行\n- 内容完整，满足周/月总结的汇报需求",
+    "modelID": "2015",
+    "modelParams": {
+      "temperature": 0.5,
+      "maxTokens": 8192
+    }
+  },
+  "createdAt": 1786976158922,
+  "updatedAt": 1786976158922,
+  "createdBy": 7667228592018820347
+}

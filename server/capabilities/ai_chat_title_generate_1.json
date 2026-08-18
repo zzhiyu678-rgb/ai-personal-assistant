@@ -1,0 +1,31 @@
+{
+  "id": "ai_chat_title_generate_1",
+  "pluginKey": "@official-plugins/ai-text-generate",
+  "pluginVersion": "1.0.18",
+  "name": "AI对话标题生成",
+  "description": "根据用户首条消息自动生成简洁的对话标题，不超过20字，用于对话列表展示",
+  "icon": "",
+  "paramsSchema": {
+    "type": "object",
+    "properties": {
+      "first_message": {
+        "type": "string",
+        "description": "用户发送的第一条消息内容"
+      }
+    },
+    "required": [
+      "first_message"
+    ]
+  },
+  "formValue": {
+    "modelID": "2015",
+    "modelParams": {
+      "maxTokens": 8192,
+      "temperature": 0.5
+    },
+    "prompt": "你是一位专业的对话标题生成助手，擅长根据用户的首条消息提炼核心主题，生成简洁明了的对话标题。\n\n用户首条消息：{{input.first_message}}\n\n生成要求：\n1. 标题必须准确概括对话的核心主题\n2. 长度严格控制在20字以内\n3. 语言精炼，表意清晰，避免冗余\n4. 适合在对话列表中展示，让用户一眼就能理解对话内容\n5. 无需添加多余的标点符号或修饰性内容\n6. 直接输出标题内容，不需要额外说明"
+  },
+  "createdAt": 1786976148510,
+  "updatedAt": 1786976148510,
+  "createdBy": 7667228592018820347
+}
