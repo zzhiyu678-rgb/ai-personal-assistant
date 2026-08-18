@@ -620,7 +620,7 @@ const CrmPage = () => {
               )}
             </div>
             <div className="flex-1 min-h-0 overflow-auto">
-              <table className="w-full min-w-[1000px]">
+              <table className="w-full min-w-[1200px] table-fixed">
                 <thead>
                   <tr className="bg-background text-left sticky top-0 z-10 border-b border-border shadow-sm">
                     <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-10">
@@ -637,31 +637,31 @@ const CrmPage = () => {
                         className="rounded"
                       />
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[200px]">
                       公司名称
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[100px]">
                       法人
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[140px]">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[150px]">
                       有效电话
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[180px]">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[170px]">
                       更多电话
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[160px]">
                       邮箱
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[140px]">
                       官网
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[90px]">
                       阶段
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground w-[100px]">
                       行业
                     </th>
-                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground text-right">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground text-right w-[120px]">
                       操作
                     </th>
                   </tr>
