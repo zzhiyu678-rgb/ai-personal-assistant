@@ -77,7 +77,7 @@ export class OpenAiService {
       'https://api.openai.com/v1';
     this.model = this.configService.get<string>('DOUBAO_MODEL') ||
       this.configService.get<string>('OPENAI_MODEL') ||
-      'gpt-4o-mini';
+      'doubao-seed-2-0-mini-260428';
   }
 
   private getClient(): OpenAI {
