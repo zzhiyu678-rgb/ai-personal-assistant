@@ -169,6 +169,10 @@ const CrmPage = () => {
   const [followUpFormLoading, setFollowUpFormLoading] = useState<boolean>(false);
   const [analyzingCustomer, setAnalyzingCustomer] = useState<boolean>(false);
 
+  // 阶段内联编辑
+  const [openStageDropdownId, setOpenStageDropdownId] = useState<string | null>(null);
+  const [savingStageId, setSavingStageId] = useState<string | null>(null);
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
@@ -269,6 +273,27 @@ const CrmPage = () => {
       // handled by caller
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  // 内联修改客户阶段
+  const handleCustomerStageChange = async (customerId: string, newStage: CustomerStage) => {
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer || savingStageId) return;
+    const oldStage = customer.stage;
+
+    setSavingStageId(customerId);
+    setOpenStageDropdownId(null);
+    try {
+      await crmApi.updateCustomer(customerId, { stage: newStage });
+      // 更新本地状态
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, stage: newStage } : c));
+    } catch {
+      toast.error('阶段更新失败，请重试');
+      // 恢复原状态
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, stage: oldStage } : c));
+    } finally {
+      setSavingStageId(null);
     }
   };
 
@@ -738,9 +763,47 @@ const CrmPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge className={STAGE_CLASSES[cust.stage]}>
-                          {STAGE_LABELS[cust.stage]}
-                        </Badge>
+                        <div className="relative inline-block">
+                          <button
+                            type="button"
+                            disabled={savingStageId === cust.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenStageDropdownId(openStageDropdownId === cust.id ? null : cust.id);
+                            }}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer hover:opacity-80 transition-opacity disabled:opacity-50 ${STAGE_CLASSES[cust.stage]}`}
+                          >
+                            {savingStageId === cust.id ? (
+                              <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                {STAGE_LABELS[cust.stage]}
+                                <ChevronDown className="size-3" />
+                              </>
+                            )}
+                          </button>
+                          {openStageDropdownId === cust.id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setOpenStageDropdownId(null)} />
+                              <div className="absolute left-0 top-full mt-1 z-20 bg-background border border-border rounded-lg shadow-lg py-1 min-w-[120px]">
+                                {(Object.keys(STAGE_LABELS) as CustomerStage[]).map((stage) => (
+                                  <button
+                                    key={stage}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCustomerStageChange(cust.id, stage);
+                                    }}
+                                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex items-center justify-between ${cust.stage === stage ? 'font-medium text-primary' : 'text-foreground'}`}
+                                  >
+                                    {STAGE_LABELS[stage]}
+                                    {cust.stage === stage && <Check className="size-3.5" />}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-foreground">
                         {cust.industry || '-'}
