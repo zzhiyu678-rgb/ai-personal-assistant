@@ -125,6 +125,8 @@ export async function generateReplyStream(
   conversationId: string,
   onChunk: (fullText: string) => void,
 ): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
     const response = await fetch(
       `/api/ai-conversations/${conversationId}/messages/generate`,
@@ -134,6 +136,8 @@ export async function generateReplyStream(
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({}),
+        signal: controller.signal,
       },
     );
 
@@ -158,8 +162,13 @@ export async function generateReplyStream(
 
     return result;
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('AI回复超时，请稍后重试');
+    }
     logger.error('生成回复失败', error);
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
