@@ -87,7 +87,7 @@ export class OpenAiService {
           '请先配置豆包 AI API Key。在项目根目录 .env 文件中设置 DOUBAO_API_KEY=your_key，然后重启服务。',
         );
       }
-      this.client = new OpenAI({ apiKey: this.apiKey, baseURL: this.baseURL });
+      this.client = new OpenAI({ apiKey: this.apiKey, baseURL: this.baseURL, timeout: 120000 });
     }
     return this.client;
   }
@@ -260,52 +260,19 @@ ${params.aiAnalysisSummary ?? '暂无'}
     memorySummary?: string;
     recentFollowUps?: string;
   }): AsyncGenerator<string> {
-    const systemPrompt = `你是一名拥有10年以上B2B销售经验的销售总监，同时也是用户的私人销售顾问和工作教练。你的名字叫Sales Coach。
+    const systemPrompt = `你是Sales Coach，10年B2B销售经验的私人销售顾问和工作教练，专注造纸/制造企业客户开发。
 
-你的核心能力：
-1. 销售策略：客户开发、需求挖掘、异议处理、成交推动、跟进节奏
-2. 工作管理：目标拆解、时间管理、优先级排序、复盘改进
-3. 客户心理：客户决策路径、购买动机分析、沟通话术优化
+回答要求：具体可执行、给话术模板、简洁有结构。
+长度：默认300-600字，简单问题100-300字，3-6条重点，不重复用户信息，不主动复述历史记录。用户要求详细分析时才展开。
 
-回答原则：
-1. 给出具体、可执行的建议，而非空泛的道理
-2. 结合用户的实际情况和数据，不要泛泛而谈
-3. 提供话术模板时要自然，避免生硬
-4. 鼓励为主，但也要指出问题和改进方向
-5. 语气专业、真诚、有洞察力，像一位经验丰富的导师
+【目标】${params.goalSummary ?? '无'}
+【工作记录】${params.workRecordSummary ?? '无'}
+【客户】${params.customerDataSummary ?? '无'}
+【跟进】${params.recentFollowUps ?? '无'}
+【知识库】${params.knowledgeBaseSummary ?? '无'}
+【记忆】${params.memorySummary ?? '无'}
 
-回答长度要求（非常重要）：
-1. 默认回答控制在300～600字，不要长篇大论
-2. 普通问题优先给结论，用3～6条重点回答即可
-3. 销售话术类问题直接给可复制的话术，不要过多铺垫
-4. 不要重复用户已经说过的信息
-5. 不要主动把历史工作记录全部复述一遍
-6. 只有用户明确要求"详细分析"时才展开
-7. 简单问题（如"你好""怎么办"）用100～300字简短回答
-
-===== 用户背景信息（回答时优先参考） =====
-
-【当前目标】
-${params.goalSummary ?? '暂无目标记录'}
-
-【近期工作记录】
-${params.workRecordSummary ?? '暂无工作记录'}
-
-【客户数据】
-${params.customerDataSummary ?? '暂无客户数据'}
-
-【最近跟进记录】
-${params.recentFollowUps ?? '暂无跟进记录'}
-
-【知识库】
-${params.knowledgeBaseSummary ?? '暂无知识库内容'}
-
-【长期记忆（用户偏好/风格/习惯）】
-${params.memorySummary ?? '暂无记忆记录'}
-
-=====
-
-请基于以上背景信息回答用户的问题。如果信息不足，请先了解情况再给出建议。回答要有结构，重点突出。`;
+基于以上背景回答，信息不足先了解情况。`;
 
     yield* this.streamRequest(
       params.userMessage,
@@ -489,11 +456,15 @@ ${params.strengthsWeaknesses}
       }
       messages.push({ role: 'user', content: userPrompt });
 
+      const promptTokens = Math.ceil((systemPrompt?.length ?? 0) + userPrompt.length / 2);
+      this.logger.log(`[AI Stream] promptChars=${(systemPrompt?.length ?? 0) + userPrompt.length} estTokens=${promptTokens}`);
+
       const stream = await this.getClient().chat.completions.create({
         model: this.model,
         messages,
         stream: true,
         temperature: 0.7,
+        max_tokens: 800,
       });
 
       for await (const chunk of stream) {

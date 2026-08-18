@@ -400,14 +400,13 @@ export class AiConversationService {
       .from(goalTable)
       .where(eq(goalTable.createdBy, userId))
       .orderBy(desc(goalTable.createdAt))
-      .limit(5);
+      .limit(3);
 
     if (goals.length === 0) return '暂无目标记录';
 
     return goals
       .map(
-        (g) =>
-          `- [${g.type}] ${g.title}（状态：${g.status}，截止：${g.endDate}）${g.description ? `\n  描述：${g.description.slice(0, 60)}` : ''}`,
+        (g) => `- ${g.title}(${g.status})`,
       )
       .join('\n');
   }
@@ -422,7 +421,7 @@ export class AiConversationService {
       .from(dailyRecordTable)
       .where(eq(dailyRecordTable.createdBy, userId))
       .orderBy(desc(dailyRecordTable.recordDate))
-      .limit(7);
+      .limit(5);
 
     if (records.length === 0) return '暂无工作记录';
 
@@ -430,11 +429,11 @@ export class AiConversationService {
       .map((r) => {
         const analysis = r.aiAnalysis as { qualityScore?: number; highlights?: string[] } | null;
         const score = analysis?.qualityScore ? `评分：${analysis.qualityScore}` : '';
-        const highlights = analysis?.highlights?.slice(0, 2).join('；') ?? '';
-        const completedBrief = (r.completed || '').slice(0, 100);
-        return `【${r.recordDate}】${score}${completedBrief ? `\n  完成：${completedBrief}` : ''}${highlights ? `\n  亮点：${highlights}` : ''}`;
+        const highlights = analysis?.highlights?.slice(0, 1).join('；') ?? '';
+        const completedBrief = (r.completed || '').slice(0, 60);
+        return `【${r.recordDate}】${score}${completedBrief ? ` ${completedBrief}` : ''}${highlights ? ` ${highlights}` : ''}`;
       })
-      .join('\n\n');
+      .join('\n');
   }
 
   private async buildCustomerSummary(userId: string): Promise<string> {
@@ -450,15 +449,15 @@ export class AiConversationService {
       .from(customerTable)
       .where(eq(customerTable.createdBy, userId))
       .orderBy(desc(customerTable.updatedAt))
-      .limit(5);
+      .limit(3);
 
     if (customers.length === 0) return '暂无客户数据';
 
     return customers
       .map((c) => {
         const analysis = c.aiAnalysis as { dealProbability?: number; intentionLevel?: string } | null;
-        const prob = analysis?.dealProbability ? `，成交概率：${analysis.dealProbability}%` : '';
-        return `- ${c.company}（联系人：${c.contactName}，阶段：${c.stage}${c.industry ? `，行业：${c.industry}` : ''}${prob}）`;
+        const prob = analysis?.dealProbability ? `(${analysis.dealProbability}%)` : '';
+        return `- ${c.company} ${c.stage}${prob}`;
       })
       .join('\n');
   }
@@ -516,8 +515,8 @@ export class AiConversationService {
 
   private async buildMemorySummary(userId: string): Promise<string> {
     const allMemories = await this.memoryService.getAllByUser(userId);
-    // 只取最近20条记忆，避免Prompt过大
-    const memories = allMemories.slice(0, 20);
+    // 只取最近5条记忆，避免Prompt过大
+    const memories = allMemories.slice(0, 5);
 
     if (memories.length === 0) return '暂无记忆记录';
 
@@ -531,17 +530,17 @@ export class AiConversationService {
     const byType = new Map<string, string[]>();
     for (const m of memories) {
       const arr = byType.get(m.type) ?? [];
-      arr.push(m.content);
+      arr.push(m.content.slice(0, 80));
       byType.set(m.type, arr);
     }
 
     const parts: string[] = [];
     for (const [type, contents] of byType) {
       const label = typeLabels[type] ?? type;
-      parts.push(`【${label}】\n${contents.map((c) => `- ${c}`).join('\n')}`);
+      parts.push(`${label}: ${contents.join('；')}`);
     }
 
-    return parts.join('\n\n');
+    return parts.join('\n');
   }
 
   private async buildRecentFollowUpsSummary(userId: string): Promise<string> {
@@ -562,7 +561,7 @@ export class AiConversationService {
         sql`(${customerTable.createdBy}).user_id = ${userId}`,
       )
       .orderBy(desc(customerFollowUpTable.createdAt))
-      .limit(5);
+      .limit(3);
 
     if (followUps.length === 0) return '暂无跟进记录';
 
@@ -580,11 +579,11 @@ export class AiConversationService {
 
     return followUps
       .map((f) => {
-        const company = customerMap.get(f.customerId) ?? '未知客户';
-        const date = new Date(f.createdAt).toISOString().slice(0, 10);
-        const contentBrief = f.content.slice(0, 120);
-        return `【${date}】${company}（${f.followType}）\n  ${contentBrief}`;
+        const company = customerMap.get(f.customerId) ?? '未知';
+        const date = new Date(f.createdAt).toISOString().slice(5, 10);
+        const contentBrief = f.content.slice(0, 60);
+        return `【${date}】${company}: ${contentBrief}`;
       })
-      .join('\n\n');
+      .join('\n');
   }
 }

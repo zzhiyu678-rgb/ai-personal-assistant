@@ -296,31 +296,35 @@ export class AiConversationController {
       .map((m, i) => pendingMessages.length > 1 ? `${i + 1}. ${m.content}` : m.content)
       .join('\n\n');
 
-    // 判断是否第一条消息（对话中还没有任何assistant消息）
-    const isFirst = pendingMessages.length > 0 && (
-      await this.aiConversationService.getMessages(id, userId)
-    ).items.every((m) => m.role === 'user');
-
     // 性能计时
     const perfStart = Date.now();
-    const contextStart = Date.now();
-    const context = await this.aiConversationService.buildContext(userId, mergedContent);
-    const contextTime = Date.now() - contextStart;
 
-    // 设置流式响应头
+    // 并行执行：isFirst检查 和 buildContext（两者无依赖）
+    const contextStart = Date.now();
+    const [context, allMessages] = await Promise.all([
+      this.aiConversationService.buildContext(userId, mergedContent),
+      this.aiConversationService.getMessages(id, userId),
+    ]);
+    const contextTime = Date.now() - contextStart;
+    const isFirst = pendingMessages.length > 0 && allMessages.items.every((m) => m.role === 'user');
+
+    // 设置流式响应头（尽早建立连接）
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
 
     let aiContent = '';
     let clientDisconnected = false;
     let firstTokenTime = 0;
+    let chunkCount = 0;
 
     req.on('close', () => {
       clientDisconnected = true;
     });
 
     try {
+      const apiStart = Date.now();
       const stream = this.aiConversationService.streamCoachChat({
         userMessage: mergedContent,
         goalSummary: context.goalSummary,
@@ -334,7 +338,10 @@ export class AiConversationController {
       for await (const chunk of stream) {
         if (firstTokenTime === 0) {
           firstTokenTime = Date.now() - perfStart;
+          const apiFirstToken = Date.now() - apiStart;
+          this.logger.log(`[AI Coach] firstToken: total=${firstTokenTime}ms context=${contextTime}ms apiWait=${apiFirstToken}ms`);
         }
+        chunkCount++;
         aiContent += chunk;
         if (!clientDisconnected && !res.writableEnded) {
           try {
@@ -346,7 +353,8 @@ export class AiConversationController {
       }
 
       const totalTime = Date.now() - perfStart;
-      this.logger.log(`[AI Coach Generate] pending=${pendingMessages.length} context=${contextTime}ms firstToken=${firstTokenTime}ms total=${totalTime}ms contentLen=${aiContent.length}`);
+      const genTime = totalTime - firstTokenTime;
+      this.logger.log(`[AI Coach Generate] pending=${pendingMessages.length} context=${contextTime}ms firstToken=${firstTokenTime}ms genTime=${genTime}ms total=${totalTime}ms chunks=${chunkCount} contentLen=${aiContent.length}`);
     } catch (error) {
       this.logger.error(`Generate reply failed: ${JSON.stringify(error)}`);
       // 如果已经生成了部分内容，不写入错误信息到流，直接结束。
