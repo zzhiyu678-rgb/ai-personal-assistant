@@ -86,6 +86,11 @@ const STAGE_LABELS: Record<CustomerStage, string> = {
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
 
+/** 判断是否为邮箱格式 */
+function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 /** 从客户数据中提取有效电话和更多电话 */
 function extractCustomerPhones(cust: Customer): { validPhones: string[]; morePhones: string[] } {
   const validPhones: string[] = [];
@@ -96,11 +101,11 @@ function extractCustomerPhones(cust: Customer): { validPhones: string[]; morePho
   if (validMatch) {
     validMatch[1].split(/[,，、]/).forEach(s => {
       const v = s.trim();
-      if (v) validPhones.push(v);
+      if (v && !isEmail(v)) validPhones.push(v);
     });
   }
-  // 兼容旧数据：contactInfo作为有效电话
-  if (validPhones.length === 0 && cust.contactInfo && cust.contactInfo !== '未提供') {
+  // 兼容旧数据：contactInfo作为有效电话（但过滤邮箱）
+  if (validPhones.length === 0 && cust.contactInfo && cust.contactInfo !== '未提供' && !isEmail(cust.contactInfo)) {
     validPhones.push(cust.contactInfo);
   }
 
@@ -109,7 +114,7 @@ function extractCustomerPhones(cust: Customer): { validPhones: string[]; morePho
   if (moreMatch) {
     moreMatch[1].split(/[,，、]/).forEach(s => {
       const v = s.trim();
-      if (v) morePhones.push(v);
+      if (v && !isEmail(v)) morePhones.push(v);
     });
   }
 

@@ -153,10 +153,22 @@ export class CrmService {
     };
   }
 
+  /** 判断是否为邮箱格式 */
+  private isEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  }
+
+  /** 判断是否为网址格式 */
+  private isWebsite(value: string): boolean {
+    const v = value.trim().toLowerCase();
+    return /^https?:\/\//.test(v) || /^www\./.test(v) || /^[a-z0-9-]+\.[a-z]{2,}(\/.*)?$/i.test(v);
+  }
+
   /**
    * 统一电话号码解析函数（单个添加和Excel导入共用）
    * 处理Excel格式：13800138000.0、'13800138000、"13800138000"、138 0013 8000、138-0013-8000、+86 13800138000
-   * 分类规则：只有明确符合中国大陆11位手机号码的才进入有效电话，其他全部进入更多电话
+   * 分类规则：只有明确符合中国大陆11位手机号码的才进入有效电话，其他电话格式进入更多电话
+   * 严格过滤：邮箱、网址、公司名等非电话数据不进入任何电话字段
    * 自动去重
    */
   parsePhoneNumbers(rawPhones: string[]): { validPhones: string[]; morePhones: string[] } {
@@ -177,10 +189,14 @@ export class CrmService {
 
       if (!cleaned) continue;
 
+      // 第一优先级：邮箱 → 不进入电话字段
+      if (this.isEmail(cleaned)) continue;
+
+      // 第二优先级：网址 → 不进入电话字段
+      if (this.isWebsite(cleaned)) continue;
+
       // 尝试提取中国大陆手机号
-      // 去除+86前缀
       let mobileCandidate = cleaned.replace(/^\+?86[\s-]*/, '');
-      // 去除所有非数字字符
       const digitsOnly = mobileCandidate.replace(/\D/g, '');
 
       // 11位数字且以1开头 → 有效电话（中国大陆手机号）
@@ -189,12 +205,13 @@ export class CrmService {
         continue;
       }
 
-      // 其他全部进入更多电话，保留原始格式（座机0769-12345678等）
-      // 但做基本清理：去除首尾空格
-      const moreClean = cleaned.trim();
-      if (moreClean) {
-        moreSet.add(moreClean);
+      // 其他电话格式：必须包含至少5个数字才认为是电话号码
+      // 座机：0769-12345678、020-12345678、带分机等
+      // 12位数字、带区号横杠空格括号等
+      if (digitsOnly.length >= 5) {
+        moreSet.add(cleaned.trim());
       }
+      // 少于5个数字的内容（如姓名、公司名等）不进入电话字段
     }
 
     return {
@@ -595,10 +612,10 @@ export class CrmService {
   private readonly columnMappings: Record<string, string[]> = {
     company: ['公司名称', '企业名称', '公司', '企业', '客户名称', '单位名称', 'company', 'company name', '企业名'],
     legalRep: ['法人', '法人代表', '法定代表人', '负责人', 'legal', 'legal representative'],
-    phone: ['有效电话', '联系电话', '电话', '手机号', '手机', '联系方式', 'phone', 'tel', 'mobile', '电话号码', '电话1', '联系电话1'],
-    morePhone: ['更多电话', '备用电话', '其他电话', '座机', '固话', 'more phone', '电话2', '电话3', '电话4', '联系电话2', '联系电话3'],
-    email: ['邮箱', '电子邮件', 'email', 'e-mail', 'mail', '邮箱1', '邮箱2', '邮箱3'],
+    email: ['邮箱', '电子邮件', 'email', 'e-mail', 'mail', '邮箱1', '邮箱2', '邮箱3', '电子邮箱地址'],
     website: ['官网', '官网网址', '网址', '网站', 'website', 'url', 'web', '官方网站', '公司网址'],
+    phone: ['有效电话', '联系电话', '电话', '手机号', '手机', '联系方式', 'phone', 'tel', 'mobile', '电话号码', '电话1', '联系电话1', '移动电话'],
+    morePhone: ['更多电话', '备用电话', '其他电话', '座机', '固话', 'more phone', '电话2', '电话3', '电话4', '联系电话2', '联系电话3', '办公电话'],
     contactName: ['联系人', '联系人姓名', '联系姓名', 'contact', 'contact name', '姓名'],
     industry: ['行业', '所属行业', 'industry', '行业分类'],
     notes: ['备注', '说明', 'notes', 'remark', 'comment'],
@@ -624,9 +641,11 @@ export class CrmService {
     const columns = Object.keys(jsonData[0]);
     const fieldMapping = this.matchColumns(columns);
 
-    // 找出电话相关列
+    // 找出各字段相关列
     const phoneCols = columns.filter((col) => fieldMapping[col] === 'phone');
     const morePhoneCols = columns.filter((col) => fieldMapping[col] === 'morePhone');
+    const emailCols = columns.filter((col) => fieldMapping[col] === 'email');
+    const websiteCols = columns.filter((col) => fieldMapping[col] === 'website');
 
     const rows = jsonData.map((row) => {
       const result: Record<string, string> = {};
@@ -634,15 +653,44 @@ export class CrmService {
         result[col] = String(row[col] ?? '').trim();
       }
 
-      // 收集所有电话值并分类
+      // 收集所有电话列的值，拆分后识别邮箱/网址/电话
       const allPhoneValues: string[] = [];
+      const foundEmails = new Set<string>();
+      const foundWebsites = new Set<string>();
+
       for (const col of [...phoneCols, ...morePhoneCols]) {
         const val = result[col];
         if (val) {
-          // 支持逗号、分号、换行分隔的多个电话
-          const parts = val.split(/[,，;；\n、]/).map((s) => s.trim()).filter(Boolean);
-          allPhoneValues.push(...parts);
+          // 支持逗号、分号、换行、斜杠分隔的多个值
+          const parts = val.split(/[,，;；\n、/]/).map((s) => s.trim()).filter(Boolean);
+          for (const part of parts) {
+            if (this.isEmail(part)) {
+              foundEmails.add(part);
+            } else if (this.isWebsite(part)) {
+              foundWebsites.add(part);
+            } else {
+              allPhoneValues.push(part);
+            }
+          }
         }
+      }
+
+      // 从电话列中识别出的邮箱，追加到邮箱字段
+      if (foundEmails.size > 0) {
+        const emailCol = emailCols.length > 0 ? emailCols[0] : '__email__';
+        const existing = result[emailCol] ? result[emailCol].split(/[,，;；]/).map(s => s.trim()).filter(Boolean) : [];
+        const allEmails = [...new Set([...existing, ...foundEmails])];
+        result[emailCol] = allEmails.join(', ');
+        if (emailCol === '__email__') fieldMapping['__email__'] = 'email';
+      }
+
+      // 从电话列中识别出的网址，追加到官网字段
+      if (foundWebsites.size > 0) {
+        const websiteCol = websiteCols.length > 0 ? websiteCols[0] : '__website__';
+        const existing = result[websiteCol] ? result[websiteCol].split(/[,，;；]/).map(s => s.trim()).filter(Boolean) : [];
+        const allWebsites = [...new Set([...existing, ...foundWebsites])];
+        result[websiteCol] = allWebsites.join(', ');
+        if (websiteCol === '__website__') fieldMapping['__website__'] = 'website';
       }
 
       if (allPhoneValues.length > 0) {
@@ -650,14 +698,20 @@ export class CrmService {
         // 回写到行数据
         if (phoneCols.length > 0) {
           result[phoneCols[0]] = validPhones.join(', ');
+        } else if (validPhones.length > 0) {
+          result['__phone__'] = validPhones.join(', ');
+          fieldMapping['__phone__'] = 'phone';
         }
         if (morePhoneCols.length > 0) {
           result[morePhoneCols[0]] = morePhones.join(', ');
         } else if (morePhones.length > 0) {
-          // 没有更多电话列时，添加虚拟字段
           result['__morePhone__'] = morePhones.join(', ');
           fieldMapping['__morePhone__'] = 'morePhone';
         }
+      } else {
+        // 没有有效电话值时清空电话列
+        if (phoneCols.length > 0) result[phoneCols[0]] = '';
+        if (morePhoneCols.length > 0) result[morePhoneCols[0]] = '';
       }
 
       return result;
@@ -729,41 +783,61 @@ export class CrmService {
           continue;
         }
 
-        // 收集所有电话，重新分类
+        // 收集所有电话值，同时识别其中混入的邮箱和网址
         let allPhones: string[] = [];
-        if (c.phones && c.phones.length > 0) {
-          allPhones = [...allPhones, ...c.phones.filter(Boolean)];
-        } else if (c.phone) {
-          allPhones = [...allPhones, ...c.phone.split(/[,，、\n]/).map(s => s.trim()).filter(Boolean)];
-        }
-        if (c.morePhones && c.morePhones.length > 0) {
-          allPhones = [...allPhones, ...c.morePhones.filter(Boolean)];
-        } else if (c.morePhone) {
-          allPhones = [...allPhones, ...c.morePhone.split(/[,，、\n]/).map(s => s.trim()).filter(Boolean)];
-        }
+        const foundEmails = new Set<string>();
+        const foundWebsites = new Set<string>();
+
+        const collectPhoneValues = (vals: string[]) => {
+          for (const v of vals) {
+            if (!v) continue;
+            const parts = String(v).split(/[,，;；\n、/]/).map(s => s.trim()).filter(Boolean);
+            for (const part of parts) {
+              if (this.isEmail(part)) foundEmails.add(part);
+              else if (this.isWebsite(part)) foundWebsites.add(part);
+              else allPhones.push(part);
+            }
+          }
+        };
+
+        if (c.phones && c.phones.length > 0) collectPhoneValues(c.phones);
+        else if (c.phone) collectPhoneValues([c.phone]);
+        if (c.morePhones && c.morePhones.length > 0) collectPhoneValues(c.morePhones);
+        else if (c.morePhone) collectPhoneValues([c.morePhone]);
+
         const { validPhones, morePhones } = this.parsePhoneNumbers(allPhones);
-        // 邮箱
+
+        // 邮箱：显式传入的 + 从电话字段中识别出的
         let emails: string[] = [];
         if (c.emails && c.emails.length > 0) {
-          emails = c.emails.filter(Boolean);
+          emails = c.emails.filter(e => e && this.isEmail(e));
         } else if (c.email) {
-          emails = c.email.split(/[,，、\n]/).map(s => s.trim()).filter(Boolean);
+          emails = c.email.split(/[,，、\n]/).map(s => s.trim()).filter(e => e && this.isEmail(e));
+        }
+        for (const e of foundEmails) if (!emails.includes(e)) emails.push(e);
+
+        // 官网：显式传入的 + 从电话字段中识别出的
+        let website = c.website || '';
+        for (const w of foundWebsites) {
+          if (!website) website = w;
+          else if (!website.includes(w)) website = `${website}, ${w}`;
         }
 
-        const primaryPhone = validPhones[0] || '';
+        // contactInfo只放电话号码，绝对不能放邮箱
+        const primaryPhone = validPhones[0] || morePhones[0] || '';
         const structuredNotes = this.assembleNotes({
           legalRep: c.legalRep,
           validPhones,
           morePhones,
           emails,
-          website: c.website,
+          website,
           notes: c.notes,
         });
 
         await this.db.insert(customer).values({
           company: c.company,
           contactName: c.contactName || '未知',
-          contactInfo: (primaryPhone || emails[0] || '未提供').slice(0, 255),
+          contactInfo: (primaryPhone || '未提供').slice(0, 255),
           industry: c.industry || null,
           stage: (c.stage as any) || 'UNCONTACTED',
           notes: structuredNotes,
