@@ -634,45 +634,22 @@ const WorkTodayPage = () => {
           {/* 今日任务模块 - 与Dashboard共用同一套任务数据 */}
           <TaskSection dateStr={dateStr} />
 
-          {loading ? (
-            <Card className="shadow-sm">
-              <CardContent className="p-6 space-y-3">
-                <Skeleton className="w-32 h-5" />
-                <Skeleton className="w-full h-64 rounded-md" />
-                <Skeleton className="w-28 h-9" />
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="shadow-sm border border-border">
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Calendar className="size-4 text-primary" />
-                  工作记录
-                </CardTitle>
-                <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {!record && !hasContent && (
-                  <div className="text-center py-8">
-                    <Calendar className="size-10 text-primary/40 mx-auto mb-3" />
-                    <p className="text-muted-foreground text-sm mb-3">
-                      {formatDateLabel(currentDate)}暂无工作记录
-                    </p>
-                    <Button variant="outline" size="sm" onClick={() => {
-                      const ta = document.querySelector('textarea');
-                      ta?.focus();
-                    }}>
-                      <Calendar className="size-3.5 mr-1.5" />
-                      创建该日期记录
-                    </Button>
-                  </div>
-                )}
-                <Textarea
-                  value={inputContent}
-                  placeholder={'今天完成了什么？\n遇到了什么问题？\n明天有什么想法？\n\n直接写下来，之后AI会帮你整理成工作日报。'}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputContent(e.target.value)}
-                  className="min-h-[280px] resize-none text-base leading-relaxed"
-                />
+          {/* 工作记录 - 始终显示输入框 */}
+          <Card className="shadow-sm border border-border">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Calendar className="size-4 text-primary" />
+                工作记录
+              </CardTitle>
+              <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                value={inputContent}
+                placeholder={'今天完成了什么？\n遇到了什么问题？\n明天有什么想法？\n\n直接写下来，之后AI会帮你整理成工作日报。'}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputContent(e.target.value)}
+                className="min-h-[280px] resize-none text-base leading-relaxed"
+              />
                 <div className="flex items-center justify-between">
                   <div className="text-xs text-muted-foreground">
                     每5秒自动保存，也可以手动点击保存
@@ -696,7 +673,6 @@ const WorkTodayPage = () => {
                 </div>
               </CardContent>
             </Card>
-          )}
         </>
       )}
     </div>
